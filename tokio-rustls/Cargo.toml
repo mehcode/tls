@@ -12,8 +12,9 @@ categories = ["asynchronous", "cryptography", "network-programming"]
 edition = "2018"
 
 [dependencies]
+bytes = "1"
 tokio = "1.0"
-rustls = { git = "https://github.com/ctz/rustls" }
+rustls = { git = "https://github.com/djc/rustls", branch = "acceptor" }
 webpki = "0.22"
 
 [features]
