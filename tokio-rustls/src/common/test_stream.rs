@@ -227,6 +227,44 @@ async fn stream_eof() -> io::Result<()> {
     Ok(()) as io::Result<()>
 }
 
+#[tokio::test]
+async fn test_lazy_config_acceptor() -> io::Result<()> {
+    let (sconfig, cconfig) = make_configs();
+    use std::convert::TryFrom;
+
+    let (cstream, sstream) = tokio::io::duplex(1200);
+    let domain = rustls::ServerName::try_from("localhost").unwrap();
+    tokio::spawn(async move {
+        let connector = crate::TlsConnector::from(cconfig);
+        let mut client = connector.connect(domain, cstream).await.unwrap();
+        client.write_all(b"hello, world!").await.unwrap();
+
+        let mut buf = Vec::new();
+        client.read_to_end(&mut buf).await.unwrap();
+    });
+
+    let acceptor =
+        crate::LazyConfigAcceptor::new(rustls::server::Acceptor::new().unwrap(), sstream);
+    let start = acceptor.await.unwrap();
+    let ch = start.client_hello();
+
+    assert_eq!(ch.server_name(), Some("localhost"));
+    assert_eq!(
+        ch.alpn()
+            .map(|protos| protos.collect::<Vec<_>>())
+            .unwrap_or(Vec::new()),
+        Vec::<&[u8]>::new()
+    );
+
+    let mut stream = start.into_stream(sconfig).await.unwrap();
+    let mut buf = [0; 13];
+    stream.read_exact(&mut buf).await.unwrap();
+    assert_eq!(&buf[..], b"hello, world!");
+
+    stream.write_all(b"bye").await.unwrap();
+    Ok(())
+}
+
 fn make_pair() -> (ServerConnection, ClientConnection) {
     use std::convert::TryFrom;
 
